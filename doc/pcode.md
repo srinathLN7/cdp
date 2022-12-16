@@ -1,5 +1,6 @@
 # psuedo code
 
+```
 P1: Challenger 
 P2: Guesser
 
@@ -38,4 +39,5 @@ P2: Label `playG`
 			do nothing until deadline
 P1: wins
 		-claimFullReward
-		 **ENDGAME**
+		 **ENDGAME**		 
+```
