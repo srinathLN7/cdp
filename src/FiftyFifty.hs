@@ -60,7 +60,7 @@ data GameDatum = GameDatum BuiltinByteString [Maybe GameChoice, Maybe GameChoice
 
 instance Eq GameDatum where
     {-# INLINABLE (==) #-}
-    GameDatum bs mc == GameDatum bs' mc' = (bs == bs') && (mc == mc')
+    GameDatum bs mcs == GameDatum bs' mcs' = (bs == bs') && (mcs == mcs')
 
 PlutusTx.unstableMakeIsData ''GameDatum
 
@@ -145,6 +145,8 @@ mkGameValidator game dat red ctx =
             traceIfFalse "too early"                     (from (1 + gProveDeadline2 game) `contains` txInfoValidRange info)         &&
             traceIfFalse "invalid stake"                 (lovelaces (txOutValue ownOutput) == (2 * gStake game))                    &&
             traceIfFalse "NFT must go to challenger"     nftToFirst
+
+        _ -> False
 
      where
          info :: TxInfo
