@@ -53,10 +53,10 @@ test' c c1 c2 = runEmulatorTraceIO' def emCfg $ myTrace c c1 c2
     v = Ada.lovelaceValueOf 1_000_000_000
 
 ffCurrency :: CurrencySymbol
-ffCurrency = "50-50"
+ffCurrency = "5050"
 
 ffToken :: TokenName
-ffToken = "ff"
+ffToken = "FF"
 
 myTrace :: GameChoice -> GameChoice -> GameChoice -> EmulatorTrace ()
 myTrace c c1 c2 = do
