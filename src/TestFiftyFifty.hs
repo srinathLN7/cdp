@@ -53,14 +53,14 @@ test' c c1 c2 = runEmulatorTraceIO' def emCfg $ myTrace c c1 c2
     v = Ada.lovelaceValueOf 1_000_000_000
 
 ffCurrency :: CurrencySymbol
-ffTokenCurrency = "50-50"
+ffCurrency = "50-50"
 
 ffToken :: TokenName
 ffToken = "ff"
 
 myTrace :: GameChoice -> GameChoice -> GameChoice -> EmulatorTrace ()
 myTrace c c1 c2 = do
-    Extras.logInfo $ "Challenger set " ++ show c ++ ", Guesser first guess: " ++ show c1 ", Guesser second guess: " ++ show c2
+    Extras.logInfo $ "Challenger set " ++ show c ++ ", Guesser first guess: " ++ show c1 ++ ", Guesser second guess: " ++ show c2
 
     h1 <- activateContractWallet w1 endpoints
     h2 <- activateContractWallet w2 endpoints
