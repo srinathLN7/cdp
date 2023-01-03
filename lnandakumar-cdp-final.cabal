@@ -1,12 +1,12 @@
 Cabal-Version:      2.4
 Name:               lnandakumar-cdp-final
 Version:            0.1.0.0
-Author:              Lakshminarayanan Nandakumar
-Maintainer:          srinath0393@gmail.com
-Build-Type:          Simple
-Copyright:           © 2023 Lakshminarayanan Nandakumar
-License:             Apache-2.0
-License-files:       LICENSE
+Author:             Lakshminarayanan Nandakumar
+Maintainer:         srinath0393@gmail.com
+Build-Type:         Simple
+Copyright:          © 2023 Lakshminarayanan Nandakumar
+License:            Apache-2.0
+License-files:      LICENSE
 
 library
   hs-source-dirs:      src

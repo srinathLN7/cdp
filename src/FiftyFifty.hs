@@ -11,7 +11,16 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 
- 
+module FiftyFifty
+    ( Game (..)
+    , GameChoice (..)
+    , ChallengerParams (..)
+    , GuesserParams (..)
+    , GameSchema
+    , endpoints
+    ) where
+
+
 import           Control.Monad        hiding (fmap)
 import           Data.Aeson           (FromJSON, ToJSON)
 import qualified Data.Map             as Map
@@ -252,9 +261,9 @@ challengerGame cp = do
         m   <- findGameOutput game 
         now <- currentTime
         case m of
-            Nothing -> throwError "no game output found"
+            Nothing             -> throwError "no game output found"
             Just (oref, o, dat) -> case dat of
-                GameDatum _ [Nothing, Nothing] -> do
+                GameDatum _ [Nothing, Nothing]                          -> do
                     logInfo @String "guesser did not play"
                     let lookups = Constraints.unspentOutputs (Map.singleton oref o) <>
                                   Constraints.otherScript (gameValidator game)
@@ -264,7 +273,7 @@ challengerGame cp = do
                     void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
                     logInfo @String "reclaimed stake" 
 
-                GameDatum _ [Just c1, Just c2] | (c1 /= c && c2 /= c) -> do 
+                GameDatum _ [Just c1, Just c2] | (c1 /= c && c2 /= c)   -> do 
                     logInfo @String "guesser did not guess correctly"
                     let lookups = Constraints.unspentOutputs (Map.singleton oref o) <>
                                   Constraints.otherScript (gameValidator game)
@@ -275,3 +284,76 @@ challengerGame cp = do
                     logInfo @String "GAME OVER - CHALLENGER WON!!!"
                 
                 _ -> logInfo @String "GAME OVER - GUESSER WON!!!"
+
+
+data GuesserParams = GuesserParams
+    { gpChallenger     :: !PaymentPubKeyHash
+    , gpStake          :: !Integer
+    , gpGuessDeadline  :: !POSIXTime
+    , gpProveDeadline  :: !POSIXTime
+    , gpCurrency       :: !CurrencySymbol
+    , gpTokenName      :: !TokenName
+    , gpChoice1        :: !GameChoice
+    , gpChoice2        :: !GameChoice
+    } deriving (Show, Generic, FromJSON, ToJSON, ToSchema)
+
+
+guesserGame :: forall w s. GuesserParams -> Contract w s Text ()
+guesserGame gp = do
+    pkh <- Contract.ownPaymentPubKeyHash
+    let game = Game 
+               { gChallenger    = gpChallenger gp
+               , gGuesser       = pkh
+               , gStake         = gpStake gp
+               , gGuessDeadline = gpGuessDeadline gp
+               , gProveDeadline = gpProveDeadline gp
+               , gNFT           = AssetClass (gpCurrency gp, gpTokenName gp)
+               }
+        m <- findGameOutput game
+        case m of
+            Just (oref, o, GameDatum bs [Nothing, Nothing]) -> do
+               logInfo @String "running guessing game found"
+                now <- currentTime
+                let token   = assetClassValue (gNFT game) 1
+                let v       = let x = lovelaceValueOf (spStake sp) in x <> x <> token
+                    c1      = gpChoice1 gp
+                    c2      = gpChoice2 gp
+                    lookups = Constraints.unspentOutputs (Map.singleton oref o)                                             <>
+                              Constraints.otherScript (gameValidator game)                                                  <>
+                              Constraints.typedValidatorLookups (typedGameValidator game)
+                    tx      = Constraints.mustSpendScriptOutput oref (Redeemer $ PlutusTx.toBuiltinData $ Guess [c1, c2])   <>
+                              Constraints.mustPayToTheScript (GameDatum bs  [Just c1, Just c2]) v                           <>
+                              Constraints.mustValidateIn (to now)
+                    ledgerTx <- submitTxConstraintsWith @Gaming lookups tx
+                    let tid = getCardanoTxId ledgerTx
+                    void $ awaitTxConfirmed tid
+                    logInfo @String $ "guessed choices: " ++ show (gpChoice1 gp) ++ " and " show (gpChoice2 gp) 
+
+                    waitUntilTimeHasPassed $ gpProveDeadline gp
+
+                    m' <- findGameOutput game
+                    now <- currentTime
+
+                    case m' of
+                        Nothing             ->    logInfo @String "GAME OVER - CHALLENGER WON!!!"
+
+                        Just (oref', o', _) -> do
+                        logInfo @String "challenger didn't prove"
+                        let lookups' =  Constraints.unspentOutputs (Map.singleton oref' o')                                         <>
+                                        Constraints.otherScript (gameValidator game)
+                            tx'      =  Constraints.mustSpendScriptOutput oref' (Redeemer $ PlutusTx.toBuiltinData ClaimGuesser)    <>
+                                        Constraints.mustValidateIn (from now')                                                      <>
+                                        Constraints.mustPayToPubKey (gpChallenger gp) (token <> adaValueOf (getAda minAdaTxOut))
+                        ledgerTx' <- submitTxConstraintsWith @Gaming lookups' tx'
+                        void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
+                        logInfo @String "GAME OVER - GUESSER WON!!!" 
+
+             _ -> logInfo @String "no running game found" 
+
+type GameSchema = Endpoint "challenge" ChallengerParams .\/ Endpoint "guess" GuesserParams
+
+endpoints :: Contract () GameSchema Text ()
+endpoints = awaitPromise (challenge `select` guess) >> endpoints
+  where
+    challenge  = endpoint @"challenge"  challengerGame
+    guess      = endpoint @"guess" guesserGame           
