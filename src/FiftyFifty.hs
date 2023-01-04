@@ -66,13 +66,13 @@ instance Eq GameChoice where
 PlutusTx.unstableMakeIsData ''GameChoice
 
 data GameDatum =   GameDatum BuiltinByteString (Maybe GameChoice) (Maybe GameChoice) 
-                 | Draw     
+                 | FinishedAsDraw     
     deriving Show
 
 instance Eq GameDatum where
     {-# INLINABLE (==) #-}
     GameDatum bs mc1 mc2 == GameDatum bs' mc1' mc2' = (bs == bs') && (mc1 == mc1') && (mc2 == mc2')
-    Draw                 == Draw                    = True
+    FinishedAsDraw       == FinishedAsDraw          = True
     _                    == _                       = False   
 
 PlutusTx.unstableMakeIsData ''GameDatum
@@ -142,7 +142,7 @@ mkGameValidator game dat red ctx =
         (GameDatum bs (Just c1) (Just c2), ProveP nonce c)  ->
             traceIfFalse "not signed by challenger"      (txSignedBy info (unPaymentPubKeyHash $ gChallenger game))                 &&   
             traceIfFalse "invalid proof"                 (isValidPartialProof bs nonce c c1 c2)                                     &&
-            traceIfFalse "invalid output datum"          (outputDatum == Draw)                                                      &&    
+            traceIfFalse "invalid output datum"          (outputDatum == FinishedAsDraw)                                                      &&    
             traceIfFalse "missed prove deadline"         (to (gProveDeadline game) `contains` txInfoValidRange info)                &&
             traceIfFalse "invalid UTXO input"            (lovelaces (txOutValue ownInput) == (2*gStake game))                       &&
             traceIfFalse "invalid UTXO output"           (lovelaces (txOutValue ownOutput) == gStake game)                          &&
@@ -169,7 +169,7 @@ mkGameValidator game dat red ctx =
         -- challenger has already provided a valid partial proof and declared the game as Draw
         -- guesser can get the stake back
         -- game over with DRAW
-        (Draw, ClaimGuesser)                                ->                                                                  
+        (FinishedAsDraw, ClaimGuesser)                                ->                                                                  
             traceIfFalse "not signed by guesser"         (txSignedBy info (unPaymentPubKeyHash $ gGuesser game))                    &&  
             traceIfFalse "too early"                     (from (1 + gProveDeadline game) `contains` txInfoValidRange info)          &&
             traceIfFalse "invalid stake"                 (lovelaces (txOutValue ownInput) == gStake game)                           &&
@@ -306,7 +306,7 @@ challengerGame cp = do
                                   Constraints.otherScript (gameValidator game)                                                          <>
                                   Constraints.typedValidatorLookups (typedGameValidator game)
                         tx'     = Constraints.mustSpendScriptOutput oref (Redeemer $ PlutusTx.toBuiltinData $ ProveP (cpNonce cp) c)    <>
-                                  Constraints.mustPayToTheScript (Draw) v'                                                              <>  
+                                  Constraints.mustPayToTheScript (FinishedAsDraw) v'                                                              <>  
                                   Constraints.mustValidateIn (to $ now + 1000)
                     ledgerTx' <- submitTxConstraintsWith @Gaming lookups tx'
                     void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
@@ -377,7 +377,7 @@ guesserGame gp = do
                 case m' of
                     Nothing                 ->    logInfo @String "[guesser] GAME OVER - CHALLENGER WON!!!"
 
-                    Just (oref', o', Draw)  -> do
+                    Just (oref', o', FinishedAsDraw)  -> do
                         logInfo @String "[guesser] challenger provided proof that first guess was incorrect and declared the game as DRAW"
                         let lookups' =  Constraints.unspentOutputs (Map.singleton oref' o')                                             <>
                                         Constraints.otherScript (gameValidator game)
