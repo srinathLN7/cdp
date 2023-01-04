@@ -65,19 +65,24 @@ instance Eq GameChoice where
 
 PlutusTx.unstableMakeIsData ''GameChoice
 
-data GameDatum = GameDatum BuiltinByteString (Maybe GameChoice) (Maybe GameChoice)
+data GameDatum =   GameDatum BuiltinByteString (Maybe GameChoice) (Maybe GameChoice) 
+                 | Draw     
     deriving Show
 
 instance Eq GameDatum where
     {-# INLINABLE (==) #-}
     GameDatum bs mc1 mc2 == GameDatum bs' mc1' mc2' = (bs == bs') && (mc1 == mc1') && (mc2 == mc2')
+    Draw                 == Draw                    = True
+    _                    == _                       = False   
 
 PlutusTx.unstableMakeIsData ''GameDatum
 
 data GameRedeemer =   Guess GameChoice GameChoice 
-                    | Prove BuiltinByteString GameChoice
+                    | ProveF BuiltinByteString GameChoice
+                    | ProveP BuiltinByteString GameChoice
                     | ClaimChallenger 
                     | ClaimGuesser
+                    | ClaimFullReward
     deriving Show
 
 PlutusTx.unstableMakeIsData ''GameRedeemer
@@ -123,25 +128,28 @@ mkGameValidator game dat red ctx =
         --guesser's choices c1 and c2 were both incorrect
         --challenger proves choice c was chosen instead of c1 and c2
         --game OVER - challenger WINS
-        (GameDatum bs (Just c1) (Just c2), Prove nonce c)   ->
+        (GameDatum bs (Just c1) (Just c2), ProveF nonce c)  ->
             traceIfFalse "not signed by challenger"      (txSignedBy info (unPaymentPubKeyHash $ gChallenger game))                 &&   
-            traceIfFalse "invalid proof"                 (isValidProof bs nonce c c1 c2)                                            &&    
+            traceIfFalse "invalid proof"                 (isValidFullProof bs nonce c c1 c2)                                        &&    
             traceIfFalse "missed prove deadline"         (to (gProveDeadline game) `contains` txInfoValidRange info)                &&
             traceIfFalse "invalid stake"                 (lovelaces (txOutValue ownInput) == (2 * gStake game))                     &&
             traceIfFalse "NFT must go to challenger"      nftToChallenger
 
         --guesser's first choice c1 was incorrect but second choice was correct.
-        --challenger proves only the second guess was correct and hence reclaims the stake back but leaves the NFT back so that guesser can claim his/her stake back
+        --challenger proves only the second guess was correct and hence reclaims the stake back 
+        --challenger leaves the NFT back so that guesser can claim his/her stake back 
         --game OVER with DRAW
-        (GameDatum bs (Just c1) (Just c), Prove nonce c)    ->
+        (GameDatum bs (Just c1) (Just c2), ProveP nonce c)  ->
             traceIfFalse "not signed by challenger"      (txSignedBy info (unPaymentPubKeyHash $ gChallenger game))                 &&   
-            traceIfFalse "invalid proof"                 (isValidPartialProof bs nonce c c1 c2)                                     &&    
+            traceIfFalse "invalid proof"                 (isValidPartialProof bs nonce c c1 c2)                                     &&
+            traceIfFalse "invalid output datum"          (outputDatum == Draw)                                                      &&    
             traceIfFalse "missed prove deadline"         (to (gProveDeadline game) `contains` txInfoValidRange info)                &&
             traceIfFalse "invalid stake"                 (lovelaces (txOutValue ownInput) == gStake game)                           &&
+            traceIfFalse "game NFT is missing"           (assetClassValueOf (txOutValue ownOutput) (gNFT game) == 1)
 
         --guesser no longer responds
         --challenger gets the stake back
-        --game OVER
+        --game OVER. NO RESULT
         (GameDatum _ Nothing Nothing, ClaimChallenger)      ->
             traceIfFalse "not signed by challenger"      (txSignedBy info (unPaymentPubKeyHash $ gChallenger game))                 &&    
             traceIfFalse "too early"                     (from (1 + gGuessDeadline game) `contains` txInfoValidRange info)          &&
@@ -149,15 +157,23 @@ mkGameValidator game dat red ctx =
             traceIfFalse "NFT must go to challenger"      nftToChallenger
 
 
-        -- challenger no longer responds with a valid proof or challenger provided partial proof to claim stake back. 
-        -- guesser WINS or game DRAWS.   
-        -- game OVER
-        (GameDatum _ (Just _) (Just _), ClaimGuesser) ->                                                                  
+        -- challenger no longer responds with a valid proof     
+        -- game OVER - guesser WINS.
+        (GameDatum _ (Just _) (Just _), ClaimFullReward)    ->                                                                  
             traceIfFalse "not signed by guesser"         (txSignedBy info (unPaymentPubKeyHash $ gGuesser game))                    &&  
             traceIfFalse "too early"                     (from (1 + gProveDeadline game) `contains` txInfoValidRange info)          &&
-            traceIfFalse "invalid stake"                 (lovelaces (txOutValue ownInput) == gStake game ||
-                                                             lovelaces (txOutValue ownInput) == (2 * gStake game))                  &&
+            traceIfFalse "invalid stake"                 (lovelaces (txOutValue ownInput) == (2 * gStake game))                     &&
             traceIfFalse "NFT must go to challenger"      nftToChallenger
+
+        -- challenger has already provided a valid partial proof and declared the game as Draw
+        -- guesser can get the stake back
+        -- game over with DRAW
+        (Draw, ClaimGuesser)                                ->                                                                  
+            traceIfFalse "not signed by guesser"         (txSignedBy info (unPaymentPubKeyHash $ gGuesser game))                    &&  
+            traceIfFalse "too early"                     (from (1 + gProveDeadline game) `contains` txInfoValidRange info)          &&
+            traceIfFalse "invalid stake"                 (lovelaces (txOutValue ownInput) == gStake game)                           &&
+            traceIfFalse "NFT must go to challenger"      nftToChallenger
+
 
         _ -> False
 
@@ -181,8 +197,8 @@ mkGameValidator game dat red ctx =
             Nothing -> traceError "game output datum not found"
             Just d  -> d
         
-        isValidProof :: BuiltinByteString -> BuiltinByteString -> GameChoice -> GameChoice -> GameChoice -> Bool
-        isValidProof bs nonce c c1 c2 = sha2_256 (nonce `appendByteString` (unsafeFromGameChoice c))== bs && c /= c1 && c /= c2
+        isValidFullProof :: BuiltinByteString -> BuiltinByteString -> GameChoice -> GameChoice -> GameChoice -> Bool
+        isValidFullProof bs nonce c c1 c2 = sha2_256 (nonce `appendByteString` (unsafeFromGameChoice c))== bs && c /= c1 && c /= c2
 
         isValidPartialProof :: BuiltinByteString -> BuiltinByteString -> GameChoice -> GameChoice -> GameChoice -> Bool
         isValidPartialProof bs nonce c c1 c2 = sha2_256 (nonce `appendByteString` (unsafeFromGameChoice c))== bs && c /= c1 && c == c2
@@ -281,25 +297,27 @@ challengerGame cp = do
                     void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
                     logInfo @String "reclaimed stake" 
 
+                GameDatum _ (Just c1) (Just c2) | (c1 /= c && c2 == c)      -> do 
+                    logInfo @String "guesser first guessed incorrectly but guessed correctly second time"
+                    let token   = assetClassValue (gNFT game) 1
+                    let lookups = Constraints.unspentOutputs (Map.singleton oref o)                                                     <>
+                                  Constraints.otherScript (gameValidator game)
+                        tx'     = Constraints.mustSpendScriptOutput oref (Redeemer $ PlutusTx.toBuiltinData $ ProveP (cpNonce cp) c)    <>
+                                  Constraints.mustPayToTheScript (Draw) token                                                           <>  
+                                  Constraints.mustValidateIn (to $ now + 1000)
+                    ledgerTx' <- submitTxConstraintsWith @Gaming lookups tx'
+                    void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
+                    logInfo @String "GAME OVER - DRAW!!! Challenger claimed stake back"    
+
                 GameDatum _ (Just c1) (Just c2) | (c1 /= c && c2 /= c)      -> do 
                     logInfo @String "guesser guessed incorrectly twice"
-                    let lookups = Constraints.unspentOutputs (Map.singleton oref o)                                                   <>
+                    let lookups = Constraints.unspentOutputs (Map.singleton oref o)                                                     <>
                                   Constraints.otherScript (gameValidator game)
-                        tx'     = Constraints.mustSpendScriptOutput oref (Redeemer $ PlutusTx.toBuiltinData $ Prove (cpNonce cp) c) <>
+                        tx'     = Constraints.mustSpendScriptOutput oref (Redeemer $ PlutusTx.toBuiltinData $ ProveF (cpNonce cp) c)    <>
                                   Constraints.mustValidateIn (to $ now + 1000)
                     ledgerTx' <- submitTxConstraintsWith @Gaming lookups tx'
                     void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
                     logInfo @String "GAME OVER - CHALLENGER WON!!!"
-                
-                GameDatum _ (Just c1) (Just c2) | (c1 /= c && c2 == c)      -> do 
-                    logInfo @String "guesser guessed incorrectly first but guessed correctly second time"
-                    let lookups = Constraints.unspentOutputs (Map.singleton oref o)                                                   <>
-                                  Constraints.otherScript (gameValidator game)
-                        tx'     = Constraints.mustSpendScriptOutput oref (Redeemer $ PlutusTx.toBuiltinData $ Prove (cpNonce cp) c) <>
-                                  Constraints.mustValidateIn (to $ now + 1000)
-                    ledgerTx' <- submitTxConstraintsWith @Gaming lookups tx'
-                    void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
-                    logInfo @String "GAME OVER - Its a DRAW!!!"
                 
                 _ -> logInfo @String "GAME OVER - GUESSER WON!!!"       
 
@@ -354,14 +372,25 @@ guesserGame gp = do
                 now' <- currentTime
 
                 case m' of
-                    Nothing             ->    logInfo @String "GAME OVER - CHALLENGER WON!!!"
+                    Nothing                 ->    logInfo @String "GAME OVER - CHALLENGER WON!!!"
 
-                    Just (oref', o', _) -> do
-                        logInfo @String "challenger didn't provide any valid proof"
-                        let lookups' =  Constraints.unspentOutputs (Map.singleton oref' o')                                         <>
+                    Just (oref', o', Draw)  -> do
+                        logInfo @String "challenger provided proof that first guess was incorrect and declared the game as DRAW"
+                        let lookups' =  Constraints.unspentOutputs (Map.singleton oref' o')                                             <>
                                         Constraints.otherScript (gameValidator game)
-                            tx'      =  Constraints.mustSpendScriptOutput oref' (Redeemer $ PlutusTx.toBuiltinData ClaimGuesser)    <>
-                                        Constraints.mustValidateIn (from now')                                                      <>
+                            tx'      =  Constraints.mustSpendScriptOutput oref' (Redeemer $ PlutusTx.toBuiltinData ClaimGuesser)        <>
+                                        Constraints.mustValidateIn (from now')                                                          <>
+                                        Constraints.mustPayToPubKey (gpChallenger gp) (token <> adaValueOf (getAda minAdaTxOut))
+                        ledgerTx' <- submitTxConstraintsWith @Gaming lookups' tx'
+                        void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
+                        logInfo @String "GAME OVER - DRAW!!! Guesser claimed stake back"
+
+                    Just (oref', o', _)     -> do
+                        logInfo @String "challenger didn't provide any valid proof"
+                        let lookups' =  Constraints.unspentOutputs (Map.singleton oref' o')                                             <>
+                                        Constraints.otherScript (gameValidator game)
+                            tx'      =  Constraints.mustSpendScriptOutput oref' (Redeemer $ PlutusTx.toBuiltinData ClaimFullReward)     <>
+                                        Constraints.mustValidateIn (from now')                                                          <>
                                         Constraints.mustPayToPubKey (gpChallenger gp) (token <> adaValueOf (getAda minAdaTxOut))
                         ledgerTx' <- submitTxConstraintsWith @Gaming lookups' tx'
                         void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
