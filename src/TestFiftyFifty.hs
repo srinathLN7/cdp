@@ -7,7 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
-
+ 
 module TestFiftyFifty
     ( test
     , test'
@@ -34,6 +34,7 @@ test = do
     test' A A B
     test' A B A
     test' A B C
+    test' D A C 
 
 w1, w2 :: Wallet
 w1 = knownWallet 1

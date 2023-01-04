@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
-
+ 
 module FiftyFifty
     ( Game (..)
     , GameChoice (..)
@@ -122,13 +122,22 @@ mkGameValidator game dat red ctx =
 
         --guesser's choices c1 and c2 were both incorrect
         --challenger proves choice c was chosen instead of c1 and c2
-        --game OVER
+        --game OVER - challenger WINS
         (GameDatum bs (Just c1) (Just c2), Prove nonce c)   ->
             traceIfFalse "not signed by challenger"      (txSignedBy info (unPaymentPubKeyHash $ gChallenger game))                 &&   
             traceIfFalse "invalid proof"                 (isValidProof bs nonce c c1 c2)                                            &&    
             traceIfFalse "missed prove deadline"         (to (gProveDeadline game) `contains` txInfoValidRange info)                &&
             traceIfFalse "invalid stake"                 (lovelaces (txOutValue ownInput) == (2 * gStake game))                     &&
             traceIfFalse "NFT must go to challenger"      nftToChallenger
+
+        --guesser's first choice c1 was incorrect but second choice was correct.
+        --challenger proves only the second guess was correct and hence reclaims the stake back but leaves the NFT back so that guesser can claim his/her stake back
+        --game OVER with DRAW
+        (GameDatum bs (Just c1) (Just c), Prove nonce c)    ->
+            traceIfFalse "not signed by challenger"      (txSignedBy info (unPaymentPubKeyHash $ gChallenger game))                 &&   
+            traceIfFalse "invalid proof"                 (isValidPartialProof bs nonce c c1 c2)                                     &&    
+            traceIfFalse "missed prove deadline"         (to (gProveDeadline game) `contains` txInfoValidRange info)                &&
+            traceIfFalse "invalid stake"                 (lovelaces (txOutValue ownInput) == gStake game)                           &&
 
         --guesser no longer responds
         --challenger gets the stake back
@@ -140,12 +149,14 @@ mkGameValidator game dat red ctx =
             traceIfFalse "NFT must go to challenger"      nftToChallenger
 
 
-        -- challenger no longer responds. guesser WINS.   
+        -- challenger no longer responds with a valid proof or challenger provided partial proof to claim stake back. 
+        -- guesser WINS or game DRAWS.   
         -- game OVER
         (GameDatum _ (Just _) (Just _), ClaimGuesser) ->                                                                  
             traceIfFalse "not signed by guesser"         (txSignedBy info (unPaymentPubKeyHash $ gGuesser game))                    &&  
             traceIfFalse "too early"                     (from (1 + gProveDeadline game) `contains` txInfoValidRange info)          &&
-            traceIfFalse "invalid stake"                 (lovelaces (txOutValue ownInput) == (2 * gStake game))                     &&
+            traceIfFalse "invalid stake"                 (lovelaces (txOutValue ownInput) == gStake game ||
+                                                             lovelaces (txOutValue ownInput) == (2 * gStake game))                  &&
             traceIfFalse "NFT must go to challenger"      nftToChallenger
 
         _ -> False
@@ -172,6 +183,9 @@ mkGameValidator game dat red ctx =
         
         isValidProof :: BuiltinByteString -> BuiltinByteString -> GameChoice -> GameChoice -> GameChoice -> Bool
         isValidProof bs nonce c c1 c2 = sha2_256 (nonce `appendByteString` (unsafeFromGameChoice c))== bs && c /= c1 && c /= c2
+
+        isValidPartialProof :: BuiltinByteString -> BuiltinByteString -> GameChoice -> GameChoice -> GameChoice -> Bool
+        isValidPartialProof bs nonce c c1 c2 = sha2_256 (nonce `appendByteString` (unsafeFromGameChoice c))== bs && c /= c1 && c == c2
 
         nftToChallenger :: Bool
         nftToChallenger = assetClassValueOf (valuePaidTo info $ unPaymentPubKeyHash $ gChallenger game) (gNFT game) == 1 
@@ -276,6 +290,16 @@ challengerGame cp = do
                     ledgerTx' <- submitTxConstraintsWith @Gaming lookups tx'
                     void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
                     logInfo @String "GAME OVER - CHALLENGER WON!!!"
+                
+                GameDatum _ (Just c1) (Just c2) | (c1 /= c && c2 == c)      -> do 
+                    logInfo @String "guesser guessed incorrectly first but guessed correctly second time"
+                    let lookups = Constraints.unspentOutputs (Map.singleton oref o)                                                   <>
+                                  Constraints.otherScript (gameValidator game)
+                        tx'     = Constraints.mustSpendScriptOutput oref (Redeemer $ PlutusTx.toBuiltinData $ Prove (cpNonce cp) c) <>
+                                  Constraints.mustValidateIn (to $ now + 1000)
+                    ledgerTx' <- submitTxConstraintsWith @Gaming lookups tx'
+                    void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
+                    logInfo @String "GAME OVER - Its a DRAW!!!"
                 
                 _ -> logInfo @String "GAME OVER - GUESSER WON!!!"       
 
