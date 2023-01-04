@@ -1,4 +1,4 @@
-#ada-guess
+# ada-guess
 
 `ada-guess` is a simple game inspired from the British television quiz show [Who Wants to Be a Millionaire?](https://en.wikipedia.org/wiki/Who_Wants_to_Be_a_Millionaire%3F_(British_game_show)).
 It consists of two players  -`C` the challenger and `G` the guesser. `C` chooses an option out of four possible choices `A`,`B`,`C`,`D` and challenges `G` to guess the secret choice. `G` can make two choices according to his/her preference. For example 'A, B' means that `G` thinks option `A` is most likely the correct answer and if not, then falls back to option `B`. The three possible outcomes are tabularized below:
@@ -25,8 +25,8 @@ stateDiagram-v2
    hash(secret_choice)||nonce --> UTXO: claimChallengerStake
    guess_secret_choice --> UTXO: claimGuesserStake
    guess_secret_choice --> UTXO: claimFullReward
-   hash(secret_choice)||nonce --> UTXO: proveF-claimFullReward
-   hash(secret_choice)||nonce --> UTXO: proveP-claimChallengerStake 
+   hash(secret_choice)||nonce --> UTXO: proveF
+   hash(secret_choice)||nonce --> UTXO: proveP 
    UTXO --> [*] : Script
 ```
 
