@@ -7,8 +7,8 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
-
-module TestEvenOdd
+ 
+module TestFiftyFifty
     ( test
     , test'
     , GameChoice (..)
@@ -27,25 +27,25 @@ import           PlutusTx.Prelude
 import           Prelude                    (IO, Show (..))
 import           Wallet.Emulator.Wallet
 
-import           EvenOdd
+import           FiftyFifty
 
 test :: IO ()
 test = do
-    test' Zero Zero
-    test' Zero One
-    test' One Zero
-    test' One One
+    test' A A B
+    test' A B A
+    test' A B C
+    test' D A C 
 
 w1, w2 :: Wallet
 w1 = knownWallet 1
 w2 = knownWallet 2
 
-test' :: GameChoice -> GameChoice -> IO ()
-test' c1 c2 = runEmulatorTraceIO' def emCfg $ myTrace c1 c2
+test' :: GameChoice -> GameChoice -> GameChoice -> IO ()
+test' c c1 c2 = runEmulatorTraceIO' def emCfg $ myTrace c c1 c2
   where
     emCfg :: EmulatorConfig
     emCfg = def { _initialChainState = Left $ Map.fromList
-                    [ (w1, v <> assetClassValue (AssetClass (gameTokenCurrency, gameTokenName)) 1)
+                    [ (w1, v <> assetClassValue (AssetClass (ffCurrency, ffToken)) 1)
                     , (w2, v)
                     ]
                 }
@@ -53,15 +53,15 @@ test' c1 c2 = runEmulatorTraceIO' def emCfg $ myTrace c1 c2
     v :: Value
     v = Ada.lovelaceValueOf 1_000_000_000
 
-gameTokenCurrency :: CurrencySymbol
-gameTokenCurrency = "ff"
+ffCurrency :: CurrencySymbol
+ffCurrency = "5050"
 
-gameTokenName :: TokenName
-gameTokenName = "STATE TOKEN"
+ffToken :: TokenName
+ffToken = "FF"
 
-myTrace :: GameChoice -> GameChoice -> EmulatorTrace ()
-myTrace c1 c2 = do
-    Extras.logInfo $ "first move: " ++ show c1 ++ ", second move: " ++ show c2
+myTrace :: GameChoice -> GameChoice -> GameChoice -> EmulatorTrace ()
+myTrace c c1 c2 = do
+    Extras.logInfo $ "Challenger set " ++ show c ++ ", Guesser first guess: " ++ show c1 ++ ", Guesser second guess: " ++ show c2
 
     h1 <- activateContractWallet w1 endpoints
     h2 <- activateContractWallet w2 endpoints
@@ -72,30 +72,31 @@ myTrace c1 c2 = do
         deadline1 = slotToBeginPOSIXTime def 5
         deadline2 = slotToBeginPOSIXTime def 10
 
-        fp = FirstParams
-                { fpSecond         = pkh2
-                , fpStake          = stake
-                , fpPlayDeadline   = deadline1
-                , fpRevealDeadline = deadline2
-                , fpNonce          = "SECRETNONCE"
-                , fpCurrency       = gameTokenCurrency
-                , fpTokenName      = gameTokenName
-                , fpChoice         = c1
+        cp = ChallengerParams
+                { cpGuesser        = pkh2
+                , cpStake          = stake
+                , cpGuessDeadline  = deadline1
+                , cpProveDeadline  = deadline2
+                , cpNonce          = "2083236893"
+                , cpCurrency       = ffCurrency
+                , cpTokenName      = ffToken
+                , cpChoice         = c
                 }
-        sp = SecondParams
-                { spFirst          = pkh1
-                , spStake          = stake
-                , spPlayDeadline   = deadline1
-                , spRevealDeadline = deadline2
-                , spCurrency       = gameTokenCurrency
-                , spTokenName      = gameTokenName
-                , spChoice         = c2
+        gp = GuesserParams
+                { gpChallenger     = pkh1
+                , gpStake          = stake
+                , gpGuessDeadline  = deadline1
+                , gpProveDeadline  = deadline2
+                , gpCurrency       = ffCurrency
+                , gpTokenName      = ffToken
+                , gpChoice1        = c1
+                , gpChoice2        = c2
                 }
 
-    callEndpoint @"first" h1 fp
+    callEndpoint @"challenge" h1 cp
 
     void $ Emulator.waitNSlots 3
 
-    callEndpoint @"second" h2 sp
+    callEndpoint @"guess" h2 gp
 
     void $ Emulator.waitNSlots 10
