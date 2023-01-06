@@ -42,63 +42,8 @@ stateDiagram-v2
 
 ## Code
 
-A brief description of how the source code of `ada-guess` can be found [here.](https://github.com/srinathLN7/cdp/tree/main/src) 
+A brief description of the source code and how to test the same can be found [here.](https://github.com/srinathLN7/cdp/tree/main/src) 
 
-## Run
-
-Open `nix-shell` from the `plutus-apps`  directory and use `Week07` from the `plutus-pioneer-program`.
-
-```
-
-cd plutus-apps 
-
--- checkout Weeok07 PPP commit
-git checkout 13836ecf5
-
-nix-shell
-
-```
-
-once the `nix-shell` is built, execute the following commands
-
-```
-
-cd $<YOUR_CDP_PROJECT_PATH>
-
-cabal update
-
-cabal repl
-
-```
-
-After executing the above commands both the modules in the `src` directory will be loaded. 
-To test the contract using emulator trace run
-
-```
-
-:l TestFiftyFifty
-
--- guesser wins
-test' A A B 
-
--- game DRAW
-test' A B A
-
---challenger wins
-test' A B C
-
-``` 
-
-Both the challenger and guesser's wallet are initially loaded with `100 ada`. The output for all the three scenarios are listed below
-
-|   Input  	 |    Result   	 |            Final Balances     		|
-|     :---       |    :----:     |          ---: 	 			|
-|  `test' A A B` |    `G` wins   |	{`C` : 901999990,  `G`: 1097981422}	|
-|  `test' A B A` |    `DRAW`     |	{`C` : 1001990701, `G`: 997981422}	|
-|  `test' A B C` |    `C` wins   |	{`C` : 1099990701, `G`: 899990711}	|
-
-
-Note that in all three cases, the NFT minted by the challenger at the start of the game to identify the UTXOs uniquely is always returned back to the challenger.
 
 ## e-UTXO model flow
 
