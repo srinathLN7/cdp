@@ -52,7 +52,7 @@ test' c c1 c2 = runEmulatorTraceIO' def emCfg $ myTrace c c1 c2
 
     v :: Value
     v = Ada.lovelaceValueOf 1_000_000_000
-
+ 
 ffCurrency :: CurrencySymbol
 ffCurrency = "5050"
 
