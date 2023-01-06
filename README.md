@@ -42,10 +42,11 @@ stateDiagram-v2
 
 ## Code
 
-A brief description of the source code and how to test the same can be found [here.](https://github.com/srinathLN7/cdp/tree/main/src) 
+A brief description of the source code and how to test the same can be found [here.](https://github.com/srinathLN7/cdp/tree/main/src)
+
+e-UTXO diagram can be found [here.](https://github.com/srinathLN7/cdp/blob/main/img/eutxo.jpg) 
 
 
-## e-UTXO model flow
 
 
 

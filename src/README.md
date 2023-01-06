@@ -54,7 +54,7 @@ To test the contract using emulator trace run
 
 ```
 
-:l TestFiftyFifty
+:l TestFiftyFifty.hs
 
 -- guesser wins
 test' A A B 
