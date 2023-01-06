@@ -40,6 +40,10 @@ stateDiagram-v2
 * Incase, `C` does not respond after `G` makes the guess, `G` can unlock the entire reward anytime after the prove deadline.
 
 
+## Code
+
+A brief description of how the source code of `ada-guess` can be found [here](https://github.com/srinathLN7/cdp/tree/main/src) 
+
 ## Run
 
 Open `nix-shell` from the `plutus-apps`  directory and use `Week07` from the `plutus-pioneer-program`.

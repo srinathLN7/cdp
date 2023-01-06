@@ -142,7 +142,7 @@ mkGameValidator game dat red ctx =
         (GameDatum bs (Just c1) (Just c2), ProveP nonce c)  ->
             traceIfFalse "not signed by challenger"      (txSignedBy info (unPaymentPubKeyHash $ gChallenger game))                 &&   
             traceIfFalse "invalid proof"                 (isValidPartialProof bs nonce c c1 c2)                                     &&
-            traceIfFalse "invalid output datum"          (outputDatum == FinishedAsDraw)                                                      &&    
+            traceIfFalse "invalid output datum"          (outputDatum == FinishedAsDraw)                                            &&    
             traceIfFalse "missed prove deadline"         (to (gProveDeadline game) `contains` txInfoValidRange info)                &&
             traceIfFalse "invalid UTXO input"            (lovelaces (txOutValue ownInput) == (2*gStake game))                       &&
             traceIfFalse "invalid UTXO output"           (lovelaces (txOutValue ownOutput) == gStake game)                          &&
@@ -306,7 +306,7 @@ challengerGame cp = do
                                   Constraints.otherScript (gameValidator game)                                                          <>
                                   Constraints.typedValidatorLookups (typedGameValidator game)
                         tx'     = Constraints.mustSpendScriptOutput oref (Redeemer $ PlutusTx.toBuiltinData $ ProveP (cpNonce cp) c)    <>
-                                  Constraints.mustPayToTheScript (FinishedAsDraw) v'                                                              <>  
+                                  Constraints.mustPayToTheScript (FinishedAsDraw) v'                                                    <>  
                                   Constraints.mustValidateIn (to $ now + 1000)
                     ledgerTx' <- submitTxConstraintsWith @Gaming lookups tx'
                     void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
@@ -379,10 +379,10 @@ guesserGame gp = do
 
                     Just (oref', o', FinishedAsDraw)  -> do
                         logInfo @String "[guesser] challenger provided proof that first guess was incorrect and declared the game as DRAW"
-                        let lookups' =  Constraints.unspentOutputs (Map.singleton oref' o')                                             <>
+                        let lookups' =  Constraints.unspentOutputs (Map.singleton oref' o')                                                     <>
                                         Constraints.otherScript (gameValidator game)
-                            tx'      =  Constraints.mustSpendScriptOutput oref' (Redeemer $ PlutusTx.toBuiltinData ClaimGuesser)        <>
-                                        Constraints.mustValidateIn (from now')                                                          <>
+                            tx'      =  Constraints.mustSpendScriptOutput oref' (Redeemer $ PlutusTx.toBuiltinData ClaimGuesser)                <>
+                                        Constraints.mustValidateIn (from now')                                                                  <>
                                         Constraints.mustPayToPubKey (gpChallenger gp) (token <> adaValueOf (getAda minAdaTxOut))
                         ledgerTx' <- submitTxConstraintsWith @Gaming lookups' tx'
                         void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
@@ -390,10 +390,10 @@ guesserGame gp = do
 
                     Just (oref', o', _)     -> do
                         logInfo @String "[guesser] challenger didn't provide any valid proof"
-                        let lookups' =  Constraints.unspentOutputs (Map.singleton oref' o')                                             <>
+                        let lookups' =  Constraints.unspentOutputs (Map.singleton oref' o')                                                     <>
                                         Constraints.otherScript (gameValidator game)
-                            tx'      =  Constraints.mustSpendScriptOutput oref' (Redeemer $ PlutusTx.toBuiltinData ClaimFullReward)     <>
-                                        Constraints.mustValidateIn (from now')                                                          <>
+                            tx'      =  Constraints.mustSpendScriptOutput oref' (Redeemer $ PlutusTx.toBuiltinData ClaimFullReward)             <>
+                                        Constraints.mustValidateIn (from now')                                                                  <>
                                         Constraints.mustPayToPubKey (gpChallenger gp) (token <> adaValueOf (getAda minAdaTxOut))
                         ledgerTx' <- submitTxConstraintsWith @Gaming lookups' tx'
                         void $ awaitTxConfirmed $ getCardanoTxId ledgerTx'
