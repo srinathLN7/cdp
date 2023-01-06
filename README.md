@@ -42,7 +42,7 @@ stateDiagram-v2
 
 ## Code
 
-A brief description of how the source code of `ada-guess` can be found [here](https://github.com/srinathLN7/cdp/tree/main/src) 
+A brief description of how the source code of `ada-guess` can be found [here.](https://github.com/srinathLN7/cdp/tree/main/src) 
 
 ## Run
 
